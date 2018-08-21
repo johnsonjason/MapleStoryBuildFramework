@@ -1,5 +1,8 @@
 // Patches the game executable for the launcher to work with it
 
+// MSACBuilder.cpp : Defines the entry point for the console application.
+//
+
 #include "stdafx.h"
 #include <Windows.h>
 #include <string>
@@ -9,6 +12,7 @@
 #include <unordered_map>
 
 #define FILL_VALUE 0
+#define MAX_URL 768
 
 enum class ms_file_options : std::size_t
 {
@@ -167,7 +171,7 @@ static void set_file_string(const HANDLE file, const ms_file_options version, co
 	std::vector<unsigned char> zero_block;
 	if (version == ms_file_options::version_62)
 	{
-		zero_block.resize(768);
+		zero_block.resize(MAX_URL);
 		std::fill(zero_block.begin(), zero_block.end(), 0);
 	}
 	else if (version == ms_file_options::version_83)
@@ -213,4 +217,6 @@ int main(void)
 	close_valid_handle(file);
     return 0;
 }
+
+
 
