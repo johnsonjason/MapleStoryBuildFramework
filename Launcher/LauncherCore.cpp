@@ -7,7 +7,7 @@ void close_valid_handle(const HANDLE file)
 {
 	if (file != INVALID_HANDLE_VALUE && file != NULL)
 	{
-		close_valid_handle(file);
+		CloseHandle(file);
 	}
 }
 
