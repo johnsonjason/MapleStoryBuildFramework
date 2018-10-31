@@ -51,7 +51,7 @@ BOOL CGameLauncherDlg::OnInitDialog()
 	SetIcon(m_hIcon, FALSE);		// Set small icon
 
 	// TODO: Add extra initialization here
-	PlaySound(L"launchermusic.wav", NULL, SND_LOOP | SND_ASYNC);
+	PlaySoundW(L"game.wav", NULL, SND_LOOP | SND_ASYNC);
 	CEdit* edit_dlg = reinterpret_cast<CEdit*>(GetDlgItem(IDC_EDIT2));
 
 	HANDLE file = CreateFileA("cerror.txt", GENERIC_READ, FILE_SHARE_READ,
@@ -107,33 +107,57 @@ HCURSOR CGameLauncherDlg::OnQueryDragIcon()
 	return static_cast<HCURSOR>(m_hIcon);
 }
 
+
+// Get setup.txt from repository
+// Reads "mediafire.com/file/*/*.exe - *.exe"
+// [mediafire url] - [file name]
 void install_game(const std::string& install_file)
 {
 	std::pair<std::string, std::string> repository_info = get_filebasename(install_file);
-	if (pullc_gcontent(repository_info.first, "setup.txt", repository_info.second) == S_OK)
+	if (pullc_gcontent(repository_info.first, repository_info.second, repository_info.second) == S_OK)
 	{
 		MessageBoxA(NULL, "Installation succeeded completely", "Installer", MB_OK);
-		return;
 	}
 	else
 	{
 		MessageBoxA(NULL, "Installation is incomplete", "Installer", MB_OK);
-		return;
 	}
+	DeleteFileA(repository_info.second.c_str());
 }
 
 void CGameLauncherDlg::OnBnClickedButton4() // Game Launcher
 {
+	CButton* v62check;
+	CButton* v83check;
+
+	v62check = reinterpret_cast<CButton*>(GetDlgItem(IDC_RADIO1));
+	v83check = reinterpret_cast<CButton*>(GetDlgItem(IDC_RADIO2));
+
+	if (v62check->GetCheck() == 1)
+	{
+		client_version = ms_file_options::version_62;
+	}
+	else if (v83check->GetCheck() == 1)
+	{
+		client_version = ms_file_options::version_83;
+	}
+	else
+	{
+		return;
+	}
+
+	return;
 	STARTUPINFOA startup_info = { 0 };
 	PROCESS_INFORMATION process_info = { 0 };
-	std::string launchobject_locator = "Game.exe";
-
+	std::string launchobject_locator = "GameClient.exe";
+	set_version(ms_file_options::version_62);
+	
 	// Get the repository URL for the game
-	std::string dl_object_url = get_fileinformation(launchobject_locator.c_str()) + "/Game.exe";
+	std::string dl_object_url = get_fileinformation(launchobject_locator.c_str()) + "/GameClient.exe";
 	std::string dl_object_path = "lverify.exe";
 
 	// Get the anti-cheat repository
-	std::string ac_object_url = "https://gitlab.com/....../";
+	std::string ac_object_url = "https://*****.com/****/***";
 	std::string ac_object_path = "s_rvpackage.dll";
 
 	// Pull the game from the repository for verification
@@ -180,10 +204,10 @@ void CGameLauncherDlg::OnBnClickedButton4() // Game Launcher
 
 void CGameLauncherDlg::OnBnClickedButton6() // Open Website
 {
-	ShellExecuteA(0, "open", "https://website.com/", 0, 0, SW_SHOWNORMAL);
+	ShellExecuteA(0, "open", "https://website.org/", 0, 0, SW_SHOWNORMAL);
 }
 
 void CGameLauncherDlg::OnBnClickedButton7() // Real About /Install
 {
-	install_game("config.txt");
+	install_game("launcher.exe");
 }
