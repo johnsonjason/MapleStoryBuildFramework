@@ -16,34 +16,46 @@ enum class ms_file_options : std::size_t
 	version_83
 };
 
+// <offset, size> encoding ptrs
 const std::vector<std::pair<std::size_t, std::size_t>> file_ptrs =
 {
-	{ 0x1000, 0x1000 },
-	{ 0x2004, 0x1000 }
+	{ 0x274F56, 0x50 }
 };
 
+const std::vector<std::pair<std::size_t, std::size_t>> file_ptrs83 =
+{
+	{ 0x397BFF, 0x50 }
+};
+
+// <offset, size> encoding ptrs
 const std::vector<std::pair<std::size_t, std::size_t>> virtual_ptrs =
 {
-	{ 0x00401000, 0x1000 },
-	{ 0x00402004, 0x1000 }
+	{ 0x00674F56, 0x50 }
+};
+
+const std::vector<std::pair<std::size_t, std::size_t>> virtual_ptrs83 =
+{
+	{ 0x00797BFF, 0x50 }
 };
 
 const std::unordered_map<ms_file_options, std::pair<std::size_t, std::uint8_t>> version_signature_map =
 {
 	{ ms_file_options::version_62, { 0x20EA30, 0xE8 } },
-	{ ms_file_options::version_83, { 0x000000, 0x00 } }
+	{ ms_file_options::version_83, { 0x20EA30, 0xE1 } }
 };
 
 const std::unordered_map<ms_file_options, std::size_t> file_repository = 
 {
-	{ ms_file_options::version_62, 0x573AF8 },
-	{ ms_file_options::version_83, 0x000000 }
+	{ ms_file_options::version_62, 0x6B0 },
+	{ ms_file_options::version_83, 0x6B0 }
 };
 
+extern ms_file_options client_version;
+
 void close_valid_handle(const HANDLE file);
-void set_version();
-void crypt_block(std::vector<std::uint8_t>& data_stream);
-void decrypt_process(const HANDLE process, const std::size_t reference_base);
+void set_version(const ms_file_options version);
+void encode_block(std::vector<std::uint8_t>& data_stream);
+void decode_process(const HANDLE process, const std::size_t reference_base);
 
 std::string get_filechecksum(std::string& file_name);
 std::string get_processchecksum(std::uint32_t process_id, std::size_t reference_base);
