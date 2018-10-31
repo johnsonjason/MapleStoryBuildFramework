@@ -1,7 +1,7 @@
 #include "stdafx.h"
 #include "LauncherCore.h"
 
-static ms_file_options game_version = ms_file_options::undefined;
+ms_file_options client_version = ms_file_options::undefined;
 
 void close_valid_handle(const HANDLE file)
 {
@@ -65,7 +65,7 @@ std::size_t get_modbase(const std::uint32_t pid)
 	return 0;
 }
 
-void crypt_block(std::vector<std::uint8_t>& data_stream)
+void encode_block(std::vector<std::uint8_t>& data_stream)
 {
 	for (std::size_t data = 0; data < data_stream.size(); data++)
 	{
@@ -74,25 +74,36 @@ void crypt_block(std::vector<std::uint8_t>& data_stream)
 }
 
 
-void decrypt_process(const HANDLE process, const std::size_t reference_base)
+void decode_process(const HANDLE process, const std::size_t reference_base)
 {
 	std::vector<std::uint8_t> data_stream;
-	for (std::size_t crypt_ptr = 0; crypt_ptr < virtual_ptrs.size(); crypt_ptr++)
+	std::vector<std::pair<std::size_t, std::size_t>> _virtual_ptrs;
+
+	if (client_version == ms_file_options::version_62)
+	{
+		_virtual_ptrs = virtual_ptrs;
+	}
+	else if (client_version == ms_file_options::version_83)
+	{
+		_virtual_ptrs = virtual_ptrs83;
+	}
+
+	for (std::size_t crypt_ptr = 0; crypt_ptr < _virtual_ptrs.size(); crypt_ptr++)
 	{
 		unsigned long old_protect;
-		void* virtual_ptr = reinterpret_cast<void*>(reference_base + virtual_ptrs[crypt_ptr].first);
+		void* virtual_ptr = reinterpret_cast<void*>(reference_base + _virtual_ptrs[crypt_ptr].first);
 
-		data_stream.resize(virtual_ptrs[crypt_ptr].second);
+		data_stream.resize(_virtual_ptrs[crypt_ptr].second);
 
-		ReadProcessMemory(process, virtual_ptr, &data_stream[0], virtual_ptrs[crypt_ptr].second, nullptr);
+		ReadProcessMemory(process, virtual_ptr, &data_stream[0], _virtual_ptrs[crypt_ptr].second, nullptr);
 
-		crypt_block(data_stream);
+		encode_block(data_stream);
 
-		VirtualProtectEx(process, virtual_ptr, virtual_ptrs[crypt_ptr].second, PAGE_EXECUTE_READWRITE, &old_protect);
+		VirtualProtectEx(process, virtual_ptr, _virtual_ptrs[crypt_ptr].second, PAGE_EXECUTE_READWRITE, &old_protect);
 
-		WriteProcessMemory(process, virtual_ptr, &data_stream[0], virtual_ptrs[crypt_ptr].second, nullptr);
+		WriteProcessMemory(process, virtual_ptr, &data_stream[0], _virtual_ptrs[crypt_ptr].second, nullptr);
 
-		VirtualProtectEx(process, virtual_ptr, virtual_ptrs[crypt_ptr].second, old_protect, &old_protect);
+		VirtualProtectEx(process, virtual_ptr, _virtual_ptrs[crypt_ptr].second, old_protect, &old_protect);
 	}
 }
 
@@ -112,7 +123,17 @@ std::string get_filechecksum(std::string& file_name)
 
 	hash_stream.init();
 
-	for (const std::pair<std::size_t, std::size_t>& ptr_set : file_ptrs)
+	std::vector<std::pair<std::size_t, std::size_t>> _file_ptrs;
+	if (client_version == ms_file_options::version_62)
+	{
+		_file_ptrs = file_ptrs;
+	}
+	else if (client_version == ms_file_options::version_83)
+	{
+		_file_ptrs = file_ptrs83;
+	}
+
+	for (const std::pair<std::size_t, std::size_t>& ptr_set : _file_ptrs)
 	{
 		unsigned long bytes_read;
 
@@ -178,21 +199,44 @@ std::string get_fileinformation(const std::string& game)
 		std::vector<char> data_stream;
 		data_stream.resize(260);
 
-		SetFilePointer(gamefile, file_repository.at(game_version), nullptr, FILE_BEGIN);
+		SetFilePointer(gamefile, file_repository.at(client_version), nullptr, FILE_BEGIN);
 		ReadFile(gamefile, &data_stream[0], data_stream.size(), &bytes_read, nullptr);
 		close_valid_handle(gamefile);
+
+		data_stream.erase(std::remove(data_stream.begin(), data_stream.end(), '\0'),  data_stream.end());
+		data_stream.shrink_to_fit();
+
 		return std::string(data_stream.begin(), data_stream.end());
 	}
 	return "";
 }
 
+// Launcher information
 std::pair<std::string, std::string> get_filebasename(const std::string& config)
 {
-	std::ifstream config_file(config.c_str());
+	unsigned long bytes_read;
+	const std::size_t repository_ptr = 0xD460; // URL
+	const std::size_t repo_install_ptr = 0xD500; // URL file
+	std::vector<char> data_stream;
 	std::pair<std::string, std::string> repository;
-	safe_getline(config_file, repository.first);
-	safe_getline(config_file, repository.second);
-	config_file.close();
+
+	HANDLE launcherfile = CreateFileA(config.c_str(), GENERIC_READ, FILE_SHARE_READ,
+		NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+
+	data_stream.resize(128);
+
+	SetFilePointer(launcherfile, repository_ptr, nullptr, FILE_BEGIN);
+	ReadFile(launcherfile, &data_stream[0], data_stream.size(), &bytes_read, nullptr);
+	data_stream.erase(std::remove(data_stream.begin(), data_stream.end(), '\0'), data_stream.end());
+
+	repository.first = std::string(data_stream.begin(), data_stream.end());
+
+	SetFilePointer(launcherfile, repo_install_ptr, nullptr, FILE_BEGIN);
+	ReadFile(launcherfile, &data_stream[0], data_stream.size(), &bytes_read, nullptr);
+	data_stream.erase(std::remove(data_stream.begin(), data_stream.end(), '\0'), data_stream.end());
+
+	repository.second = std::string(data_stream.begin(), data_stream.end());
+
 	return repository;
 }
 
@@ -200,10 +244,8 @@ std::pair<std::string, std::string> get_filebasename(const std::string& config)
 std::int32_t pullc_gcontent(const std::string& base_locator, const std::string& base_target, const std::string& url_gc_locator)
 {
 	std::string full_url = base_locator + "/" + base_target;
-
 	DeleteFileA(full_url.c_str());
 	std::int32_t dl_status = URLDownloadToFileA(NULL, full_url.c_str(), url_gc_locator.c_str(), 0, NULL);
-
 	if (dl_status != S_OK)
 	{
 		return dl_status;
@@ -211,7 +253,6 @@ std::int32_t pullc_gcontent(const std::string& base_locator, const std::string& 
 
 	std::ifstream dl_file(base_target.c_str());
 	std::string download_req;
-
 	if (dl_file.is_open())
 	{
 		while (safe_getline(dl_file, download_req))
@@ -219,11 +260,25 @@ std::int32_t pullc_gcontent(const std::string& base_locator, const std::string& 
 			if (download_req.empty())
 			{
 				break;
+			} 
+
+			std::size_t name_pos = download_req.find_last_of("-");
+			std::string file_name;
+
+			if (name_pos == std::string::npos)
+			{
+				file_name = download_req.substr(name_pos + 1, std::string::npos);
 			}
-			std::string request = base_locator + "/" + download_req;
-			DeleteFileA(download_req.c_str());
-			dl_status = URLDownloadToFileA(NULL, request.c_str(), download_req.c_str(), 0, NULL);
+			else
+			{
+				file_name = download_req.substr(name_pos + 2, std::string::npos);
+			}
+
+			std::string file_url = download_req.substr(0, name_pos - 1);
+			DeleteFileA(file_name.c_str());
+			dl_status = URLDownloadToFileA(NULL, file_url.c_str(), file_name.c_str(), 0, NULL);
 		}
+
 		dl_file.close();
 	}
 	return dl_status;
@@ -257,9 +312,8 @@ std::uint8_t configure_loadedgame(const PROCESS_INFORMATION& process_info, std::
 	}
 	else if (fchecksum == ufchecksum && fchecksum == pchecksum)
 	{
-		decrypt_process(process_info.hProcess, 0);
+		decode_process(process_info.hProcess, 0);
 		ResumeThread(process_info.hThread);
-
 		close_valid_handle(process_info.hProcess);
 		close_valid_handle(process_info.hThread);
 
@@ -272,5 +326,5 @@ std::uint8_t configure_loadedgame(const PROCESS_INFORMATION& process_info, std::
 
 void set_version(const ms_file_options version)
 {
-	game_version = version;
+	client_version = version;
 }
